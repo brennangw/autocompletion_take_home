@@ -7,6 +7,9 @@ from engine.autocompleter import Autocompleter
 def term_index():
     return TermIndex()
 
+@pytest.fixture
+def single_search_term():
+    return "apple last"
 
 @pytest.mark.parametrize(
     "string,suggestions",
@@ -23,7 +26,7 @@ def term_index():
         ("apple last 1", [["apple", "last 12 months"]]),
         ("apple last 12 months", [["apple", "last 12 months"]]),
         ("average revenue by month 202", [
-            ["average", "revenue", "by month", "2022"], 
+            ["average", "revenue", "by month", "2022"],
             ["average", "revenue", "by month", "2023"]
         ]),
         ("m revenue by month 2023", [
@@ -45,9 +48,34 @@ def term_index():
         ]),
     ],
 )
+
 def test_answer(term_index: TermIndex, string: str, suggestions: list[list[str]]):
     autocompleter = Autocompleter(term_index=term_index)
 
     response = autocompleter.suggestions(string)
 
     assert { tuple(x) for x in response } == { tuple([Term(value=s) for s in xs]) for xs in suggestions}
+
+def test_suggestions_cache_behavior(term_index: TermIndex, single_search_term: str):
+    autocompleter = Autocompleter(term_index=term_index)
+    first_suggestions_response = autocompleter.suggestions(single_search_term)
+    assert len(first_suggestions_response) > 0 # make sure suggestions are being returned
+    second_suggestions_response = autocompleter.suggestions(single_search_term)
+    assert len(second_suggestions_response) > 0 # make sure suggestions are being returned
+    # The lists of the two responses should not be the same as they are mutable
+    assert first_suggestions_response is not second_suggestions_response
+    assert first_suggestions_response[0] is not second_suggestions_response[0]
+    # The terms are frozen and are returned by the underlaying
+    # TermIndex so those are the same (by identity) in each list
+    assert first_suggestions_response[0][0] is second_suggestions_response[0][0]
+
+def test_suggestion_paths_cache_behavior(term_index: TermIndex, single_search_term):
+    autocompleter = Autocompleter(term_index=term_index)
+    first_suggestions_path_response = autocompleter._suggestion_paths(single_search_term)
+    assert len(first_suggestions_path_response) > 0 # make sure suggestions are being returned
+    second_suggestions_path_response = autocompleter._suggestion_paths(single_search_term)
+    assert len(second_suggestions_path_response) > 0 # make sure suggestions are being returned
+    # The same list should returned in each of the calls
+    assert first_suggestions_path_response is second_suggestions_path_response
+    assert first_suggestions_path_response[0] is second_suggestions_path_response[0]
+    assert first_suggestions_path_response[0][0] is second_suggestions_path_response[0][0]
